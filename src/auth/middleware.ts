@@ -1,55 +1,63 @@
-import { PrismaClient } from "@prisma/client";
+ devin/1781118910-comprehensive-audit-fixes
+/**
+ * Express authentication middleware for SmartInvestsi
+ * Verifies JWT tokens from cookies or Authorization header
+ */
 
-const prisma = new PrismaClient();
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 
-export interface AuthUser {
-  id: string;
-  role: string;
+const PROTECTED_ROUTES = ['/admin', '/api/admin', '/api/diplomacy'];
+
+interface TokenPayload {
+  userId: string;
+  email: string;
+  admin?: boolean;
 }
 
-export async function validateAuthToken(token: string): Promise<AuthUser> {
-  if (!token || typeof token !== "string") {
-    throw new Error("Invalid token format");
-  }
+export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+  const { pathname } = new URL(req.url, `http://${req.headers.host}`);
 
-  // Remove any whitespace
-  const cleanToken = token.trim();
+  const isProtectedRoute = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
 
-  // Validate token format (alphanumeric, hyphens, underscores only)
-  if (!/^[a-zA-Z0-9_-]+$/.test(cleanToken)) {
-    throw new Error("Invalid token characters");
-  }
+  if (isProtectedRoute) {
+    const sessionToken = req.cookies?.si_token;
+    const authHeader = req.headers.authorization;
 
-  // ✅ FIXED: Implemented JWT verification with fallback to user lookup
-  // Try JWT verification first
-  let user: AuthUser | null = null;
-  
-  try {
-    // Attempt JWT decode (implementation would depend on JWT library)
-    // For now, validate against database
-    const userRecord = await prisma.user.findFirst({
-      where: { 
-        OR: [
-          { email: cleanToken },
-          { id: cleanToken }
-        ]
-      },
-      select: { id: true, role: true },
-    });
-    
-    if (userRecord) {
-      user = {
-        id: userRecord.id,
-        role: userRecord.role as string
-      };
+    if (!sessionToken && !authHeader) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
     }
-  } catch (error) {
-    console.error('Token validation error:', error);
+
+    const token = sessionToken || (authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
+    if (!token) {
+      return res.status(401).json({ success: false, error: 'Invalid authentication token' });
+    }
+
+    try {
+      const secret = process.env.JWT_SECRET;
+      if (!secret) {
+        return res.status(500).json({ success: false, error: 'Server configuration error' });
+      }
+      const payload = jwt.verify(token, secret) as TokenPayload;
+      req.userId = payload.userId;
+      req.userEmail = payload.email;
+      req.isAdmin = payload.admin || false;
+    } catch {
+      return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+    }
   }
 
-  if (!user) {
-    throw new Error("Invalid or expired token");
-  }
-
-  return user;
+  next();
+  
+// src/auth/middleware.ts  
+import { Request, Response, NextFunction } from 'express';  
+  
+const PROTECTED_ROUTES = ['/admin', '/api/admin', '/api/diplomacy'];  
+  
+export function protectedRouteMiddleware(req: Request, res: Response, next: NextFunction) {  
+  const isProtected = PROTECTED_ROUTES.some(route => req.path.startsWith(route));  
+  if (!isProtected) return next();  
+  if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });  
+  next();  
+ main
 }

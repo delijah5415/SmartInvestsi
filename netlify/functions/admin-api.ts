@@ -6,6 +6,7 @@
 import { Handler } from '@netlify/functions';
 import prisma from './lib/prisma';
 import logger from './logger';
+import { getCorsHeaders } from './lib/cors';
 
 interface AdminAction {
   id: string;
@@ -48,7 +49,7 @@ async function grantPremiumAccess(data: any): Promise<any> {
     // Log admin action
     logger.info('Premium access granted', { adminId, targetUserId, reason });
 
-    return { success: true, data: { action, roleUpdate: updateResult.data } };
+   return { success: true, data: { action: 'grant-enterprise', roleUpdate: updateResult.data } };
   } catch (error) {
     logger.error('Grant premium access error', { error: error.message });
     return { success: false, error: error.message };
@@ -73,7 +74,7 @@ async function grantEnterpriseAccess(data: any): Promise<any> {
 
     logger.info('Enterprise access granted', { adminId, targetUserId, reason });
 
-    return { success: true, data: { action, roleUpdate: updateResult.data } };
+    return { success: true, data: { action: 'grant-premium', roleUpdate: updateResult.data } };
   } catch (error) {
     logger.error('Grant enterprise access error', { error: error.message });
     return { success: false, error: error.message };
@@ -98,7 +99,7 @@ async function revokeAccess(data: any): Promise<any> {
 
     logger.info('Access revoked', { adminId, targetUserId, reason });
 
-    return { success: true, data: { action, roleUpdate: updateResult.data } };
+    return { success: true, data: { action: 'revoke-access', roleUpdate: updateResult.data } };
   } catch (error) {
     logger.error('Revoke access error', { error: error.message });
     return { success: false, error: error.message };
@@ -227,6 +228,7 @@ async function isAdmin(userId: string): Promise<boolean> {
 }
 
 export const handler: Handler = async (event) => {
+  const origin = event.headers?.['origin'] || event.headers?.['Origin'] || '';
   const { httpMethod, path, body } = event;
 
   try {
@@ -269,7 +271,7 @@ export const handler: Handler = async (event) => {
       statusCode: result.success ? 200 : 400,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
+        ...getCorsHeaders(origin),
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
       },
